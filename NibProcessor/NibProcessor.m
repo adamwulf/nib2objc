@@ -112,7 +112,6 @@
 - (void)process
 {
     //    NSDictionary *nibClasses = [dict objectForKey:@"com.apple.ibtool.document.classes"];
-    //    NSDictionary *nibConnections = [dict objectForKey:@"com.apple.ibtool.document.connections"];
     NSDictionary *nibObjects = [_dictionary objectForKey:@"com.apple.ibtool.document.objects"];
     NSMutableDictionary *objects = [[NSMutableDictionary alloc] init];
     
@@ -128,6 +127,7 @@
 #ifdef CONFIGURATION_Debug
             // Get notified about classes not yet handled by this utility
             NSMutableDictionary *dict = [[NSMutableDictionary alloc] init];
+            [dict setObject:key forKey:@"ID"];
             [dict setObject:klass forKey:@"// unknown object (yet)"];
             [objects setObject:dict forKey:key];
             [dict release];
@@ -135,10 +135,13 @@
         }
         else
         {
-            NSDictionary *dict = [processor processObject:object];
+            NSMutableDictionary *dict = [[NSMutableDictionary alloc] initWithDictionary:[processor processObject:object]];
+            [dict setObject:key forKey:@"ID"];
             [objects setObject:dict forKey:key];
         }
     }
+    
+    NSMutableDictionary* objectsByIDs = [[NSMutableDictionary alloc] init];
     
     // Let's print everything as source code
     [_output release];
@@ -146,6 +149,7 @@
     for (NSString *identifier in objects)
     {
         id object = [objects objectForKey:identifier];
+        NSLog(@"object: %@", object);
         NSString *identifierKey = [[identifier stringByReplacingOccurrencesOfString:@"-" withString:@""] lowercaseString];
         
         // First, output any helper functions, ordered alphabetically
@@ -201,7 +205,14 @@
                 [_output appendFormat:@"[%@%@ %@];\n", instanceName, identifierKey, value];
             }
         }
+        
+        
+        // variable name, ID
+        [objectsByIDs setObject:[NSString stringWithFormat:@"%@%@",instanceName,identifierKey] forKey:identifierKey];
+        
+        // output to file
         [_output appendString:@"\n"];    
+        
     }
     
     // Now that the objects are created, recreate the hierarchy of the NIB
@@ -211,6 +222,37 @@
         int currentView = [[item objectForKey:@"object-id"] intValue];
         [self parseChildren:item ofCurrentView:currentView withObjects:objects];
     }
+    
+    
+    NSDictionary *nibConnections = [_dictionary objectForKey:@"com.apple.ibtool.document.connections"];
+    NSLog(@"connections %@", nibConnections);
+    for (NSString *key in nibConnections)
+    {
+        NSDictionary* connection = [nibConnections objectForKey:key];
+        //        NSLog(@"connect: %@ = %@", key, connection);
+        
+        NSString* type = [connection objectForKey:@"type"];
+        
+        if([type isEqualToString:@"IBCocoaTouchOutletConnection"]){
+            NSString* sourceID = [connection objectForKey:@"source-id"];
+            NSString* destinationID = [connection objectForKey:@"destination-id"];
+            NSString* sourceVarName = [objectsByIDs objectForKey:sourceID];
+            NSString* destinationVarName = [objectsByIDs objectForKey:destinationID];
+            NSString* propertyName = [connection objectForKey:@"label"];
+            
+            if(!sourceVarName){
+                sourceVarName = @"self";
+            }
+            
+            NSLog(@"%@.%@ = %@", sourceVarName, propertyName, destinationVarName);
+        }else if([type isEqualToString:@"IBCocoaTouchEventConnection"]){
+            NSLog(@"ibaction: %@", connection);
+        }else{
+            NSLog(@"unknown type: %@", type);
+        }
+    }
+    
+    
     
     [objects release];
     objects = nil;
