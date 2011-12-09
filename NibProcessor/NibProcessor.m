@@ -176,6 +176,7 @@
         {
             id value = [object objectForKey:key];
             if (![key hasPrefix:@"__method__"] 
+                && ![key isEqualToString:@"ID"]
                 && ![key isEqualToString:@"constructor"] && ![key isEqualToString:@"class"]
                 && ![key hasPrefix:@"__helper__"])
             {
@@ -241,21 +242,50 @@
             NSString* propertyName = [connection objectForKey:@"label"];
             
             if(!sourceVarName){
-                sourceVarName = @"self";
+                [_output appendFormat:@"%@ = %@;", propertyName, destinationVarName];
+            }else{
+                [_output appendFormat:@"%@.%@ = %@;", sourceVarName, propertyName, destinationVarName];
             }
             
-            NSLog(@"%@.%@ = %@", sourceVarName, propertyName, destinationVarName);
+
         }else if([type isEqualToString:@"IBCocoaTouchEventConnection"]){
+            NSString* sourceID = [connection objectForKey:@"source-id"];
+            NSString* destinationID = [connection objectForKey:@"destination-id"];
+            NSString* sourceVarName = [objectsByIDs objectForKey:sourceID];
+            NSString* destinationVarName = [objectsByIDs objectForKey:destinationID];
+            NSString* actionName = [connection objectForKey:@"label"];
+            if(!destinationVarName){
+                destinationVarName = @"self";
+            }
+            NSString* eventName = [self keyNameForEventType:connection];
+            eventName = [eventName stringByReplacingOccurrencesOfString:@" " withString:@""];
+            eventName = [NSString stringWithFormat:@"UIControlEvent%@", eventName];
+            
+            
+//            [button114 addTarget:<#(id)#> action:<#(SEL)#> forControlEvents:UIControlEventTouchDown];
+            
+            
+            [_output appendFormat:@"[%@ addTarget:%@ action:@selector(%@) forControlEvents:%@];", sourceVarName, destinationVarName, actionName, eventName];
             NSLog(@"ibaction: %@", connection);
         }else{
             NSLog(@"unknown type: %@", type);
         }
+        [_output appendString:@"\n"];    
     }
     
     
     
     [objects release];
     objects = nil;
+}
+
+-(NSString*) keyNameForEventType:(NSDictionary*)dict{
+    for (NSString *key in dict){
+        if([[dict objectForKey:key] isEqualToString:@"event-type"]){
+            return key;
+        }
+    }
+    return nil;
 }
 
 - (void)parseChildren:(NSDictionary *)dict ofCurrentView:(int)currentView withObjects:(NSDictionary *)objects
