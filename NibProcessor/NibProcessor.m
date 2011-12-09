@@ -119,6 +119,11 @@
     {
         id object = [nibObjects objectForKey:key];
         NSString *klass = [object objectForKey:@"class"];
+        NSString *klass2 = [object objectForKey:@"custom-class"];
+        NSString *klassMinusIB = klass;
+        if([klass hasPrefix:@"IB"]){
+            klassMinusIB = [klass substringFromIndex:2];
+        }
 
         Processor *processor = [Processor processorForClass:klass];
 
@@ -137,6 +142,14 @@
         {
             NSMutableDictionary *dict = [[NSMutableDictionary alloc] initWithDictionary:[processor processObject:object]];
             [dict setObject:key forKey:@"ID"];
+            
+            NSLog(@"dictionary: %@\nobject: %@", dict, object);
+            if(klass2){
+                NSString* constructor = [dict objectForKey:@"constructor"];
+                constructor = [constructor stringByReplacingOccurrencesOfString:klassMinusIB withString:klass2 options:0 range:NSMakeRange(0, [klassMinusIB length] + 5)];
+                [dict setObject:constructor forKey:@"constructor"];
+                [dict setObject:klass2 forKey:@"class"];
+            }
             [objects setObject:dict forKey:key];
         }
     }
@@ -146,11 +159,9 @@
     // Let's print everything as source code
     [_output release];
     _output = [[NSMutableString alloc] init];
-    NSLog(@"objects: %@", objects);
     for (NSString *identifier in objects)
     {
         id object = [objects objectForKey:identifier];
-        NSLog(@"object: %@", object);
         NSString *identifierKey = [[identifier stringByReplacingOccurrencesOfString:@"-" withString:@""] lowercaseString];
         
         // First, output any helper functions, ordered alphabetically
@@ -167,9 +178,11 @@
         
         // Then, output the constructor
         id klass = [object objectForKey:@"class"];
-        id constructor = [object objectForKey:@"constructor"];
+        NSString* constructor = [object objectForKey:@"constructor"];
         NSString *instanceName = [self instanceNameForObject:object];
-        [_output appendFormat:@"%@ *%@%@ = %@;\n", klass, instanceName, identifierKey, constructor];
+        if([constructor rangeOfString:@"NSProxy"].location == NSNotFound){
+            [_output appendFormat:@"%@ *%@%@ = (%@ *) %@;\n", klass, instanceName, identifierKey, klass, constructor];
+        }
                 
         // Then, output the properties only, ordered alphabetically
         orderedKeys = [[object allKeys] sortedArrayUsingSelector:@selector(caseInsensitiveCompare:)];
@@ -216,7 +229,6 @@
         [_output appendString:@"\n"];    
         
     }
-    
     // Now that the objects are created, recreate the hierarchy of the NIB
     NSArray *nibHierarchy = [_dictionary objectForKey:@"com.apple.ibtool.document.hierarchy"];
     for (NSDictionary *item in nibHierarchy)
@@ -227,11 +239,9 @@
     
     
     NSDictionary *nibConnections = [_dictionary objectForKey:@"com.apple.ibtool.document.connections"];
-    NSLog(@"connections %@", nibConnections);
     for (NSString *key in nibConnections)
     {
         NSDictionary* connection = [nibConnections objectForKey:key];
-        NSLog(@"connect: %@ = %@", key, connection);
         
         NSString* type = [connection objectForKey:@"type"];
         
@@ -241,6 +251,14 @@
             NSString* sourceVarName = [objectsByIDs objectForKey:sourceID];
             NSString* destinationVarName = [objectsByIDs objectForKey:destinationID];
             NSString* propertyName = [connection objectForKey:@"label"];
+            
+            if(!destinationVarName){
+                destinationVarName = @"self";
+            }
+            
+            if(!sourceVarName && [propertyName isEqualToString:@"view"]){
+                sourceVarName = @"self";
+            }
             
             if(!sourceVarName){
                 [_output appendFormat:@"%@ = %@;", propertyName, destinationVarName];
@@ -261,19 +279,25 @@
             NSString* eventName = [self keyNameForEventType:connection];
             eventName = [eventName stringByReplacingOccurrencesOfString:@" " withString:@""];
             eventName = [NSString stringWithFormat:@"UIControlEvent%@", eventName];
-            
-            
-//            [button114 addTarget:<#(id)#> action:<#(SEL)#> forControlEvents:UIControlEventTouchDown];
-            
+
             
             [_output appendFormat:@"[%@ addTarget:%@ action:@selector(%@) forControlEvents:%@];", sourceVarName, destinationVarName, actionName, eventName];
-            NSLog(@"ibaction: %@", connection);
         }else{
             NSLog(@"unknown type: %@", type);
         }
         [_output appendString:@"\n"];    
     }
     
+    for (NSString *identifier in objects)
+    {
+        id object = [objects objectForKey:identifier];
+        NSString *instanceName = [self instanceNameForObject:object];
+        NSString *identifierKey = [[identifier stringByReplacingOccurrencesOfString:@"-" withString:@""] lowercaseString];
+        NSString* constructor = [object objectForKey:@"constructor"];
+        if([constructor rangeOfString:@"NSProxy"].location == NSNotFound){
+            [_output appendFormat:@"[%@%@ awakeFromNib];\n", instanceName, identifierKey];
+        }
+    }
     
     
     [objects release];
