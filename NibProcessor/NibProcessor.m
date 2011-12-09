@@ -146,6 +146,7 @@
     // Let's print everything as source code
     [_output release];
     _output = [[NSMutableString alloc] init];
+    NSLog(@"objects: %@", objects);
     for (NSString *identifier in objects)
     {
         id object = [objects objectForKey:identifier];
@@ -230,7 +231,7 @@
     for (NSString *key in nibConnections)
     {
         NSDictionary* connection = [nibConnections objectForKey:key];
-        //        NSLog(@"connect: %@ = %@", key, connection);
+        NSLog(@"connect: %@ = %@", key, connection);
         
         NSString* type = [connection objectForKey:@"type"];
         
